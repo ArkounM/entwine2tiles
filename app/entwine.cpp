@@ -9,6 +9,7 @@
 ******************************************************************************/
 
 #include "build.hpp"
+#include "convert.hpp"
 #include "entwine.hpp"
 #include "info.hpp"
 #include "merge.hpp"
@@ -35,14 +36,16 @@ namespace
         return
             t(1) + "Version: " + entwine::currentEntwineVersion().toString() +
                 "\n" +
-            t(1) + "Usage: entwine <app> <options>\n" +
+            t(1) + "Usage: entwine2tiles <app> <options>\n" +
             t(1) + "Apps:\n" +
             t(2) + "build\n" +
             t(3) + "Build an EPT dataset\n" +
             t(2) + "merge\n" +
             t(3) + "Merge colocated entwine subsets\n" +
             t(2) + "info\n" +
-            t(3) + "Gather metadata information about point cloud files\n";
+            t(3) + "Gather metadata information about point cloud files\n" +
+            t(2) + "convert\n" +
+            t(3) + "Convert a completed EPT dataset to Cesium 3D Tiles\n";
     }
 
     std::mutex mutex;
@@ -411,6 +414,10 @@ int main(int argc, char** argv)
         else if (app == "info")
         {
             entwine::app::Info().go(args);
+        }
+        else if (app == "convert")
+        {
+            entwine::app::Convert().go(args);
         }
         else
         {
