@@ -39,6 +39,8 @@ if (DEFINED BACKTRACE_DEFS)
   target_link_libraries(app PRIVATE ${Backtrace_LIBRARIES})
 endif (DEFINED BACKTRACE_DEFS)
 
-set_target_properties(app PROPERTIES OUTPUT_NAME entwine)
+# Named for the fork so it can live beside a conda-installed upstream entwine
+# without shadowing it. Every upstream subcommand still works.
+set_target_properties(app PROPERTIES OUTPUT_NAME entwine2tiles)
 
 install(TARGETS app DESTINATION bin)

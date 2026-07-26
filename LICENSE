@@ -5,6 +5,17 @@ Copyright (c) 2016 Connor Manning, Hobu, Inc. (connor@hobu.co)
 
 
 
+Fork modifications
+================================================================================
+
+This repository is entwine2tiles, a fork of Entwine. Modifications and added
+files carry the following copyright and are released under the same LGPL-2.1
+terms as the work they are derived from. See FORK.md.
+
+Copyright (c) 2026 Third Space Interactive
+
+
+
 Supporting embedded libraries
 ================================================================================
 

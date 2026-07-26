@@ -1,5 +1,12 @@
 ![Entwine logo](./doc/logo/color/entwine_logo_2-color-small.png)
 
+> **This is `entwine2tiles`, a fork of [Entwine](https://github.com/connormanning/entwine)
+> by Connor Manning and Hobu, Inc.** It restores the Cesium 3D Tiles output that
+> upstream removed in 2019 and updates it to write glTF, so a finished EPT build
+> can be converted to 3D Tiles 1.1 without PDAL, Blender, or Node in the loop.
+> Everything else is upstream Entwine, unchanged. See [FORK.md](./FORK.md) for the
+> fork point, what was added, and licensing. Entwine is LGPL-2.1 and so is this.
+> The readme below is upstream's.
 
 ## Build Status
 
