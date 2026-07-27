@@ -15,8 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IMAGE: ghcr.io/arkounm/entwine2tiles
-      # Feature branches and pull requests build and smoke test but publish
-      # nothing, so the registry only ever sees main and tags.
+      # Branches and pull requests build and smoke test but publish nothing.
       PUSH_PACKAGES: ${{ github.repository_owner == 'ArkounM' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) }}
 
     steps:
@@ -36,9 +35,10 @@ jobs:
           fi
           echo "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "REF=${IMAGE}:${VERSION}" >> $GITHUB_ENV
 
-      # Loaded rather than pushed, so the smoke test below is what decides
-      # whether this image is fit to publish.
+      # Loaded rather than pushed, so the smoke test decides whether this image
+      # is fit to publish.
       - name: Build image
         uses: docker/build-push-action@v6
         with:
@@ -48,7 +48,7 @@ jobs:
           context: .
           file: ./scripts/docker/Dockerfile
           platforms: linux/amd64
-          tags: ${{ env.IMAGE }}:${{ steps.prep.outputs.VERSION }}
+          tags: ${{ env.REF }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
@@ -61,38 +61,29 @@ jobs:
             org.opencontainers.image.created=${{ steps.prep.outputs.BUILD_DATE }}
             org.opencontainers.image.licenses=LGPL-2.1-or-later
 
-      # The image ships a conda environment that was packed and then unpacked
-      # onto a bare Ubuntu, so "does the binary still resolve its libraries" is
-      # the one thing worth proving before anything is published.
+      # The image is a conda environment packed and unpacked onto a bare Ubuntu,
+      # so "can the binary still resolve its libraries" is the thing worth
+      # proving before anything is published.
       - name: Smoke test the image
         run: |
-          docker run --rm ${IMAGE}:${{ steps.prep.outputs.VERSION }} help
-          docker run --rm ${IMAGE}:${{ steps.prep.outputs.VERSION }} build --help > /dev/null
-          docker run --rm ${IMAGE}:${{ steps.prep.outputs.VERSION }} convert --help > /dev/null
+          for args in "help" "build --help" "convert --help"; do
+            docker run --rm $REF $args > /dev/null
+          done
 
-      # When the smoke test fails it is nearly always a library the packed
-      # environment lost on its way onto bare Ubuntu, and the evidence dies with
-      # the container. Put it in the job summary, which survives the run.
       - name: Diagnose a failed smoke test
         if: failure()
         run: |
-          IMG=${IMAGE}:${{ steps.prep.outputs.VERSION }}
           probe() {
             echo "--- $1"
-            docker run --rm --entrypoint /bin/bash "$IMG" -c "$1" 2>&1 | head -40 || true
+            docker run --rm --entrypoint /bin/bash "$REF" -c "$1" 2>&1 | head -40 || true
           }
           OUT=$(
-            echo "image: $IMG"
-            docker image inspect "$IMG" --format 'loaded: {{.Id}}' 2>&1 | head -2
             probe 'ls -l /var/task/bin/entwine2tiles'
             probe '/var/task/bin/entwine2tiles help'
             probe 'ldd /var/task/bin/entwine2tiles'
-            probe 'ls /var/task/lib | head -30'
-            probe 'echo "PATH=$PATH"; echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"'
           )
-          printf '```\n%s\n```\n' "$OUT" >> "$GITHUB_STEP_SUMMARY"
-          # Job summaries need repo admin rights to read back. Annotations do
-          # not, so the same text goes out as one, percent-encoded per the
+          # Job logs need repo admin rights to read back and annotations do not,
+          # so the evidence goes out as one, percent-encoded per the
           # workflow-command rules.
           OUT=${OUT//'%'/'%25'}
           OUT=${OUT//$'\r'/'%0D'}
@@ -110,8 +101,6 @@ jobs:
       - if: ${{ env.PUSH_PACKAGES == 'true' }}
         name: Push image
         run: |
-          docker push ${IMAGE}:${{ steps.prep.outputs.VERSION }}
-          # Only main and tags reach this step, so latest always points at the
-          # newest published build.
-          docker tag ${IMAGE}:${{ steps.prep.outputs.VERSION }} ${IMAGE}:latest
+          docker push $REF
+          docker tag $REF ${IMAGE}:latest
           docker push ${IMAGE}:latest

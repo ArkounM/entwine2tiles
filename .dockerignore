@@ -1,11 +1,14 @@
-# The image builds from source now, so the context is the whole tree. Keep the
-# things that only make sense on a developer machine out of it.
+# Only the source tree is needed. Everything else just invalidates the COPY
+# layer and forces a full rebuild on a docs commit.
 .git
 .github
 build/
 _build/
 doc/
+test/
 entwine-feedstock/
 packages/
+*.md
 *.tar
 *.tar.gz
+.readthedocs.yaml

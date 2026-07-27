@@ -18,7 +18,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     strategy:
-      # One platform failing should not hide the state of the other two.
+      # One platform failing should not hide the other two.
       fail-fast: false
       matrix:
         os: ['ubuntu-latest', 'macos-latest', 'windows-latest']
@@ -32,10 +32,8 @@ jobs:
     - uses: ilammy/msvc-dev-cmd@v1
       if: matrix.os == 'windows-latest'
 
-    # miniforge-version replaces mamba-version, which setup-miniconda no longer
-    # honours, and the defaults channel is dropped because it now requires
-    # accepting Anaconda's terms of service before a solve will run. Everything
-    # in scripts/ci/environment.yml comes from conda-forge anyway.
+    # mamba-version is no longer honoured, and defaults now needs a terms of
+    # service accept before it will solve. environment.yml is all conda-forge.
     - uses: conda-incubator/setup-miniconda@v3
       with:
         environment-file: "scripts/ci/environment.yml"
@@ -60,7 +58,7 @@ jobs:
           -DCMAKE_PREFIX_PATH:FILEPATH="$CONDA_PREFIX/$PREFIX_BASE" \
           -DCMAKE_BUILD_TYPE=RelWithDebInfo \
           -DBUILD_SHARED_LIBS=ON \
-          -DBUILD_TESTING=ON \
+          -DWITH_TESTS=ON \
           -DCMAKE_INSTALL_PREFIX=${CONDA_PREFIX} \
           -D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING=1 \
           -Dgtest_force_shared_crt=ON \
