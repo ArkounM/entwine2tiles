@@ -14,6 +14,9 @@
 #include <entwine/formats/cesium/tile.hpp>
 #include <entwine/formats/cesium/tileset.hpp>
 
+#include <algorithm>
+#include <cmath>
+
 #include <entwine/types/dir.hpp>
 #include <entwine/util/config.hpp>
 #include <entwine/util/io.hpp>
@@ -62,6 +65,8 @@ Tileset::Tileset(const json& config)
     , m_origin(m_metadata.bounds.mid())
     , m_colorType(getColorType(config))
     , m_truncate(getTruncate(config))
+    , m_rawColor(config.value("rawColor", false))
+    , m_colorLut(getColorLut())
     , m_hasNormals(
             contains(m_metadata.schema, "NormalX") &&
             contains(m_metadata.schema, "NormalY") &&
@@ -155,6 +160,32 @@ bool Tileset::getTruncate(const json& config) const
     }
 
     return false;
+}
+
+std::vector<uint16_t> Tileset::getColorLut() const
+{
+    // glTF defines COLOR_0 as linear, and scanner colour is sRGB encoded, so
+    // writing the source values unchanged makes everything wash out. This is
+    // the same conversion Blender was applying on the way out of the pipeline
+    // this replaces.
+    auto srgbToLinear([](double v)
+    {
+        if (v <= 0.04045) return v / 12.92;
+        return std::pow((v + 0.055) / 1.055, 2.4);
+    });
+
+    const double denominator = m_truncate ? 65535.0 : 255.0;
+
+    std::vector<uint16_t> lut(65536);
+
+    for (std::size_t i(0); i < lut.size(); ++i)
+    {
+        double v(std::min(1.0, static_cast<double>(i) / denominator));
+        if (!m_rawColor) v = srgbToLinear(v);
+        lut[i] = static_cast<uint16_t>(std::lround(v * 65535.0));
+    }
+
+    return lut;
 }
 
 void Tileset::build() const

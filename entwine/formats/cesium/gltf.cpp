@@ -103,41 +103,43 @@ void Gltf::buildRgba(VectorPointTable& table)
     if (!m_tileset.hasColor()) return;
     m_rgba.reserve(m_rgba.size() + table.numPoints() * 4);
 
-    // Read as 16 bit and narrow here rather than asking PDAL for a uint8,
-    // which throws on anything above 255 rather than clamping.
-    auto getByte([this](const pdal::PointRef& pr, DimId id) -> uint8_t
+    // Read as 16 bit rather than asking PDAL for a uint8, which throws on
+    // anything above 255 rather than clamping. The tileset's table handles the
+    // scaling and the colour space in one lookup.
+    auto get([this](const pdal::PointRef& pr, DimId id) -> uint16_t
     {
-        const uint16_t v(pr.getFieldAs<uint16_t>(id));
-        if (m_tileset.truncate()) return v >> 8;
-        return static_cast<uint8_t>(std::min<uint16_t>(v, 255));
+        return m_tileset.toStoredColor(pr.getFieldAs<uint16_t>(id));
     });
 
-    uint8_t r(0), g(0), b(0);
+    uint16_t r(0), g(0), b(0);
 
     if (m_tileset.colorType() == ColorType::Tile)
     {
-        r = std::rand() % 256;
-        g = std::rand() % 256;
-        b = std::rand() % 256;
+        // Scale the random byte to whatever depth the table expects, so tile
+        // colouring looks the same on an 8 bit file and a 16 bit one.
+        const uint16_t spread(m_tileset.truncate() ? 257 : 1);
+        r = m_tileset.toStoredColor((std::rand() % 256) * spread);
+        g = m_tileset.toStoredColor((std::rand() % 256) * spread);
+        b = m_tileset.toStoredColor((std::rand() % 256) * spread);
     }
 
     for (const auto& pr : table)
     {
         if (m_tileset.colorType() == ColorType::Rgb)
         {
-            r = getByte(pr, DimId::Red);
-            g = getByte(pr, DimId::Green);
-            b = getByte(pr, DimId::Blue);
+            r = get(pr, DimId::Red);
+            g = get(pr, DimId::Green);
+            b = get(pr, DimId::Blue);
         }
         else if (m_tileset.colorType() == ColorType::Intensity)
         {
-            r = g = b = getByte(pr, DimId::Intensity);
+            r = g = b = get(pr, DimId::Intensity);
         }
 
         m_rgba.push_back(r);
         m_rgba.push_back(g);
         m_rgba.push_back(b);
-        m_rgba.push_back(255);
+        m_rgba.push_back(65535);
     }
 }
 
@@ -146,7 +148,7 @@ std::vector<char> Gltf::buildFile() const
     const bool hasColor(m_rgba.size());
 
     const uint64_t xyzBytes(m_xyz.size() * sizeof(float));
-    const uint64_t rgbaBytes(m_rgba.size());
+    const uint64_t rgbaBytes(m_rgba.size() * sizeof(uint16_t));
 
     json bufferViews(json::array());
     bufferViews.push_back(json::object({
@@ -178,10 +180,10 @@ std::vector<char> Gltf::buildFile() const
         }));
 
         // glTF requires each vertex attribute element to start on a 4-byte
-        // boundary, which is why colors are VEC4 bytes rather than VEC3.
+        // boundary, which is why colours are VEC4 rather than VEC3.
         accessors.push_back(json::object({
             { "bufferView", 1 },
-            { "componentType", 5121 },
+            { "componentType", 5123 },
             { "normalized", true },
             { "count", m_np },
             { "type", "VEC4" }

@@ -17,7 +17,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
 #include <entwine/builder/hierarchy.hpp>
 #include <entwine/io/io.hpp>
@@ -73,6 +75,14 @@ public:
     std::string formatString() const;
     std::string contentExtension() const;
 
+    bool rawColor() const { return m_rawColor; }
+
+    // Maps a raw colour value from the source, which is 16 bit whether or not
+    // the file uses the high byte, to the 16 bit value written to the tile.
+    // Carries the 8 bit scaling and the sRGB to linear conversion, since
+    // neither is worth recomputing per point.
+    uint16_t toStoredColor(uint16_t v) const { return m_colorLut[v]; }
+
     // Content is written relative to this point, and so are the bounding
     // volumes, which keeps everything within float range of its own origin.
     const Point& origin() const { return m_origin; }
@@ -94,6 +104,7 @@ private:
 
     ColorType getColorType(const json& config) const;
     bool getTruncate(const json& config) const;
+    std::vector<uint16_t> getColorLut() const;
 
     std::shared_ptr<arbiter::Arbiter> m_arbiter;
     const Endpoints m_in;
@@ -107,6 +118,8 @@ private:
     const Point m_origin;
     const ColorType m_colorType;
     const bool m_truncate;
+    const bool m_rawColor;
+    const std::vector<uint16_t> m_colorLut;
     const bool m_hasNormals;
     const double m_rootGeometricError;
     const double m_rootErrorMultiplier;

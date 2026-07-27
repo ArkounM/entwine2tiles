@@ -32,7 +32,10 @@ namespace cesium
 class Gltf
 {
     using Xyz = std::vector<float>;
-    using Rgba = std::vector<uint8_t>;
+
+    // 16 bit, because these are linear values: 8 bits of linear would band
+    // badly in the dark half, where most of a scan lives.
+    using Rgba = std::vector<uint16_t>;
 
 public:
     Gltf(const Tileset& tileset, const ChunkKey& ck, uint64_t np);

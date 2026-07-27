@@ -83,6 +83,17 @@ void Convert::addArgs()
             [this](json j) { m_json["colorType"] = j; });
 
     m_ap.add(
+            "--rawColor",
+            "Write colour values as they are found, rather than converting "
+            "them from sRGB to the linear values glTF expects.  Only useful "
+            "for a source whose colour is already linear, which is unusual.",
+            [this](json j)
+            {
+                checkEmpty(j);
+                m_json["rawColor"] = true;
+            });
+
+    m_ap.add(
             "--truncate",
             "3D Tiles supports 8-bit color values.  If RGB (or Intensity, if "
             "using intensity colorType) values are 16-bit, set this option to "
