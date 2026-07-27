@@ -12,10 +12,15 @@ cd entwine-feedstock
 # broken for anyone who installs it. The rename is also what lets the two sit
 # side by side in one environment, which is the point of the fork.
 yq -y -i '.context.name = "entwine2tiles"' recipe/recipe.yaml
-yq -y -i '.source.url = ""' recipe/recipe.yaml
-yq -y -i '.source.sha256 = ""' recipe/recipe.yaml
-yq -y -i '.source.path = "../../"' recipe/recipe.yaml
 yq -y -i '.build.number = 2112' recipe/recipe.yaml
+
+# url and sha256 are deleted, not blanked. rattler-build's recipe schema makes
+# source a tagged union: UrlSource requires "url" and forbids "path",
+# LocalSource requires "path" and forbids "url", and both are
+# additionalProperties: false. A source carrying url, sha256 and path at once
+# matches neither, so the recipe is rejected during validation, in about two
+# seconds, before a single file is compiled.
+yq -y -i 'del(.source.url) | del(.source.sha256) | .source.path = "../../"' recipe/recipe.yaml
 
 # The recipe's own package test runs the upstream binary name, which no longer
 # exists here. Without this, rattler-build fails the package before CI ever
