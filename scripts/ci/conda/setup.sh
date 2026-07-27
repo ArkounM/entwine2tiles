@@ -34,6 +34,11 @@ yq -y -i '.about.repository = "https://github.com/ArkounM/entwine2tiles"' recipe
 yq -y -i '.about.documentation = "https://github.com/ArkounM/entwine2tiles"' recipe/recipe.yaml
 yq -y -i '.about.summary = "Entwine with the Cesium 3D Tiles writer restored, emitting glTF"' recipe/recipe.yaml
 
+# E57 is most of what this fork gets pointed at, and the reader is a separate
+# PDAL plugin package loaded at runtime. Without it the package installs and
+# runs but cannot open the input anyone came here for.
+yq -y -i '.requirements.run += ["libpdal-e57"]' recipe/recipe.yaml
+
 ls recipe
 
 # Echoed so a failing build shows what was actually handed to rattler-build.
