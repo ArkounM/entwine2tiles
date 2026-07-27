@@ -51,6 +51,27 @@ void Convert::addArgs()
             });
 
     m_ap.add(
+            "--rootErrorMultiplier",
+            "Multiply the geometric error of the root by this value and give "
+            "it a content-free parent node, so the top of the tileset loads "
+            "from farther away.  Defaults to 1, which adds no such node.\n"
+            "Example: --rootErrorMultiplier 16.0",
+            [this](json j)
+            {
+                m_json["rootErrorMultiplier"] =
+                    json::parse(j.get<std::string>()).get<double>();
+            });
+
+    m_ap.add(
+            "--format",
+            "-f",
+            "Content format for the tiles.\n"
+            "Valid values:\n"
+            "'glb': binary glTF, the 3D Tiles 1.1 content format (default)\n"
+            "'pnts': the legacy point cloud format, deprecated in 3D Tiles 1.1",
+            [this](json j) { m_json["format"] = j; });
+
+    m_ap.add(
             "--colorType",
             "The coloring for the output tileset.  May be omitted to "
             "default to RGB or Intensity, in that order, if they exist.\n"
@@ -80,11 +101,14 @@ void Convert::run()
     std::cout << "Converting:" << std::endl;
     std::cout << "\tInput:  " << tileset.in().output.prefixedRoot() << "\n";
     std::cout << "\tOutput: " << tileset.out().prefixedRoot() << "\n";
+    std::cout << "\tFormat: " << tileset.formatString() << "\n";
     std::cout << "\tColor:  " << tileset.colorString() << "\n";
     std::cout << "\tTruncate: " << yesNo(tileset.truncate()) << "\n";
     std::cout << "\tThreads: " << tileset.threadPool().numThreads() << "\n";
+    std::cout << "\tOrigin: " << tileset.origin() << "\n";
     std::cout << "\tRoot geometric error: " <<
-        tileset.rootGeometricError() << std::endl;
+        tileset.rootGeometricError() * tileset.rootErrorMultiplier() <<
+        std::endl;
 
     std::cout << "Running..." << std::endl;
     tileset.build();

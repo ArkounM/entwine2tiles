@@ -41,6 +41,12 @@ enum class ColorType
     Tile
 };
 
+enum class Format
+{
+    Glb,
+    Pnts
+};
+
 // This class is the entrypoint of a 3D Tiles tileset definition:
 // https://github.com/CesiumGS/3d-tiles/tree/main/specification#tilesetjson
 class Tileset
@@ -62,7 +68,17 @@ public:
     bool truncate() const { return m_truncate; }
     ColorType colorType() const { return m_colorType; }
     std::string colorString() const;
+
+    Format format() const { return m_format; }
+    std::string formatString() const;
+    std::string contentExtension() const;
+
+    // Content is written relative to this point, and so are the bounding
+    // volumes, which keeps everything within float range of its own origin.
+    const Point& origin() const { return m_origin; }
+
     double rootGeometricError() const { return m_rootGeometricError; }
+    double rootErrorMultiplier() const { return m_rootErrorMultiplier; }
     double geometricErrorAt(uint64_t depth) const
     {
         return m_rootGeometricError / std::pow(2.0, depth);
@@ -74,6 +90,7 @@ public:
 
 private:
     json build(const ChunkKey& ck) const;
+    void write(const ChunkKey& ck, uint64_t np) const;
 
     ColorType getColorType(const json& config) const;
 
@@ -85,10 +102,13 @@ private:
     const Hierarchy m_hierarchy;
     const std::unique_ptr<Io> m_io;
 
+    const Format m_format;
+    const Point m_origin;
     const ColorType m_colorType;
     const bool m_truncate;
     const bool m_hasNormals;
     const double m_rootGeometricError;
+    const double m_rootErrorMultiplier;
 
     mutable uint64_t m_tileCount = 0;
     mutable uint64_t m_pointCount = 0;

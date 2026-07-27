@@ -4,6 +4,7 @@ set(BASE "${CMAKE_CURRENT_SOURCE_DIR}")
 set(
     SOURCES
     "${BASE}/tileset.cpp"
+    "${BASE}/gltf.cpp"
     "${BASE}/pnts.cpp"
 )
 
@@ -11,6 +12,7 @@ set(
     HEADERS
     "${BASE}/tile.hpp"
     "${BASE}/tileset.hpp"
+    "${BASE}/gltf.hpp"
     "${BASE}/pnts.hpp"
 )
 

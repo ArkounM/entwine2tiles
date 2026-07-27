@@ -25,26 +25,33 @@ class Tile
 public:
     Tile(const Tileset& tileset, const ChunkKey& ck)
         : m_tileset(tileset)
-        , m_json {
-            { "boundingVolume", { { "box", toBox(ck.bounds()) } } },
-            { "geometricError", m_tileset.geometricErrorAt(ck.depth()) },
-            { "content", { { "uri", ck.toString() + ".pnts" } } }
-        }
+        , m_json(json::object())
     {
+        m_json["boundingVolume"] = json::object({
+            { "box", toBox(ck.bounds()) }
+        });
+        m_json["geometricError"] = m_tileset.geometricErrorAt(ck.depth());
+        m_json["content"] = json::object({
+            { "uri", ck.toString() + m_tileset.contentExtension() }
+        });
+
         if (!ck.depth()) m_json["refine"] = "ADD";
     }
 
     json get() const { return m_json; }
 
 private:
+    // Relative to the tileset origin, matching the content.
     json toBox(Bounds in) const
     {
-        return json {
-            in.mid()[0],          in.mid()[1],          in.mid()[2],
+        const Point& o(m_tileset.origin());
+
+        return json::array({
+            in.mid().x - o.x,     in.mid().y - o.y,     in.mid().z - o.z,
             in.width() / 2.0,     0,                    0,
             0,                    in.depth() / 2.0,     0,
             0,                    0,                    in.height() / 2.0
-        };
+        });
     }
 
     const Tileset& m_tileset;

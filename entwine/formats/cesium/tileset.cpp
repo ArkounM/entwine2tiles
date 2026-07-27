@@ -9,6 +9,7 @@
 *
 ******************************************************************************/
 
+#include <entwine/formats/cesium/gltf.hpp>
 #include <entwine/formats/cesium/pnts.hpp>
 #include <entwine/formats/cesium/tile.hpp>
 #include <entwine/formats/cesium/tileset.hpp>
@@ -35,6 +36,14 @@ Metadata loadMetadata(const Endpoints& in)
     return config::getMetadata(j);
 }
 
+Format getFormat(const json& config)
+{
+    const std::string s(config.value("format", "glb"));
+    if (s == "glb" || s == "gltf") return Format::Glb;
+    if (s == "pnts") return Format::Pnts;
+    throw std::runtime_error("Invalid cesium format: " + s);
+}
+
 } // unnamed namespace
 
 Tileset::Tileset(const json& config)
@@ -49,6 +58,8 @@ Tileset::Tileset(const json& config)
     , m_hierarchy(
             hierarchy::load(m_in.hierarchy, config::getThreads(config)))
     , m_io(Io::create(m_metadata, m_in))
+    , m_format(getFormat(config))
+    , m_origin(m_metadata.bounds.mid())
     , m_colorType(getColorType(config))
     , m_truncate(config.value("truncate", false))
     , m_hasNormals(
@@ -58,6 +69,7 @@ Tileset::Tileset(const json& config)
     , m_rootGeometricError(
             m_metadata.bounds.width() /
                 config.value("geometricErrorDivisor", 32.0))
+    , m_rootErrorMultiplier(config.value("rootErrorMultiplier", 1.0))
     , m_threadPool(std::max<uint64_t>(4, config::getThreads(config)))
 {
     if (m_metadata.subset)
@@ -79,6 +91,21 @@ std::string Tileset::colorString() const
         case ColorType::Tile:       return "tile";
         default:                    return "unknown";
     }
+}
+
+std::string Tileset::formatString() const
+{
+    switch (m_format)
+    {
+        case Format::Glb:   return "glb";
+        case Format::Pnts:  return "pnts";
+        default:            return "unknown";
+    }
+}
+
+std::string Tileset::contentExtension() const
+{
+    return m_format == Format::Pnts ? ".pnts" : ".glb";
 }
 
 ColorType Tileset::getColorType(const json& config) const
@@ -109,17 +136,59 @@ ColorType Tileset::getColorType(const json& config) const
 
 void Tileset::build() const
 {
-    const ChunkKey root(m_metadata.bounds, getStartDepth(m_metadata));
+    const ChunkKey rootKey(m_metadata.bounds, getStartDepth(m_metadata));
 
-    const json j {
-        { "asset", { { "version", "1.0" } } },
-        { "geometricError", m_rootGeometricError },
-        { "root", build(root) }
-    };
+    json root(build(rootKey));
+    if (root.is_null()) throw std::runtime_error("This build has no points");
+
+    double geometricError(m_rootGeometricError);
+
+    if (m_rootErrorMultiplier != 1.0)
+    {
+        // A structural node above the octree root, holding no content of its
+        // own, so the top of the tileset starts loading from farther away.
+        geometricError *= m_rootErrorMultiplier;
+
+        json wrapper(json::object());
+        wrapper["boundingVolume"] = root.at("boundingVolume");
+        wrapper["geometricError"] = geometricError;
+        wrapper["refine"] = "ADD";
+        wrapper["children"] = json::array({ root });
+
+        root = wrapper;
+    }
+
+    json asset(json::object());
+    asset["version"] = m_format == Format::Pnts ? "1.0" : "1.1";
+
+    // Content and bounding volumes are relative to this point. Anything that
+    // needs to place the tileset on the globe needs it.
+    asset["extras"]["entwine2tiles"]["origin"] = m_origin;
+
+    json j(json::object());
+    j["asset"] = asset;
+    j["geometricError"] = geometricError;
+    j["root"] = root;
 
     m_threadPool.await();
 
     ensurePut(m_out, "tileset.json", j.dump(2));
+}
+
+void Tileset::write(const ChunkKey& ck, const uint64_t np) const
+{
+    const std::string path(ck.toString() + contentExtension());
+
+    if (m_format == Format::Pnts)
+    {
+        Pnts pnts(*this, ck, np);
+        ensurePut(m_out, path, pnts.build());
+    }
+    else
+    {
+        Gltf gltf(*this, ck, np);
+        ensurePut(m_out, path, gltf.build());
+    }
 }
 
 json Tileset::build(const ChunkKey& ck) const
@@ -133,11 +202,7 @@ json Tileset::build(const ChunkKey& ck) const
     ++m_tileCount;
     m_pointCount += np;
 
-    m_threadPool.add([this, ck, np]()
-    {
-        Pnts pnts(*this, ck, np);
-        ensurePut(m_out, ck.toString() + ".pnts", pnts.build());
-    });
+    m_threadPool.add([this, ck, np]() { write(ck, np); });
 
     json j(Tile(*this, ck));
 
