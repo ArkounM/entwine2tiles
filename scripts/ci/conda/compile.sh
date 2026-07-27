@@ -19,10 +19,13 @@ if grep -q "macos" <<< "$PDAL_PLATFORM"; then
 fi
 
 rattler-build build -r recipe --output-dir packages -m ".ci_support/${CI_PLAT}_${ARCH}_.yaml"
-conda create -y -n test -c ./packages/${CI_PLAT}-${ARCH} entwine
+
+# The package and the binary are both entwine2tiles here, not entwine. See
+# setup.sh, which renames the feedstock recipe.
+conda create -y -n test -c ./packages/${CI_PLAT}-${ARCH} entwine2tiles
 conda deactivate
 
 conda activate test
-entwine --version
+entwine2tiles help
 conda deactivate
 
