@@ -77,20 +77,27 @@ jobs:
         if: failure()
         run: |
           IMG=${IMAGE}:${{ steps.prep.outputs.VERSION }}
-          dump() {
-            {
-              echo "### \`$1\`"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            docker run --rm --entrypoint /bin/bash "$IMG" -c "$1" 2>&1 \
-              | head -60 >> "$GITHUB_STEP_SUMMARY" || true
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          probe() {
+            echo "--- $1"
+            docker run --rm --entrypoint /bin/bash "$IMG" -c "$1" 2>&1 | head -40 || true
           }
-          dump 'ls -l /var/task/bin/entwine2tiles'
-          dump '/var/task/bin/entwine2tiles help'
-          dump 'ldd /var/task/bin/entwine2tiles'
-          dump 'ls /var/task/lib | head -40'
-          dump 'echo "PATH=$PATH"; echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"'
+          OUT=$(
+            echo "image: $IMG"
+            docker image inspect "$IMG" --format 'loaded: {{.Id}}' 2>&1 | head -2
+            probe 'ls -l /var/task/bin/entwine2tiles'
+            probe '/var/task/bin/entwine2tiles help'
+            probe 'ldd /var/task/bin/entwine2tiles'
+            probe 'ls /var/task/lib | head -30'
+            probe 'echo "PATH=$PATH"; echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"'
+          )
+          printf '```\n%s\n```\n' "$OUT" >> "$GITHUB_STEP_SUMMARY"
+          # Job summaries need repo admin rights to read back. Annotations do
+          # not, so the same text goes out as one, percent-encoded per the
+          # workflow-command rules.
+          OUT=${OUT//'%'/'%25'}
+          OUT=${OUT//$'\r'/'%0D'}
+          OUT=${OUT//$'\n'/'%0A'}
+          echo "::error title=smoke test diagnostics::${OUT:0:3500}"
 
       - if: ${{ env.PUSH_PACKAGES == 'true' }}
         name: Login to GitHub Container Registry
