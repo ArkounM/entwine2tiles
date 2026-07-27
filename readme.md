@@ -10,13 +10,34 @@
 
 ## Build Status
 
-[![OSX](https://github.com/connormanning/entwine/workflows/OSX/badge.svg)](https://github.com/connormanning/entwine/actions?query=workflow%3AOSX)
-[![Linux](https://github.com/connormanning/entwine/workflows/Linux/badge.svg)](https://github.com/connormanning/entwine/actions?query=workflow%3ALinux)
-[![Windows](https://github.com/connormanning/entwine/workflows/Windows/badge.svg)](https://github.com/connormanning/entwine/actions?query=workflow%3AWindows)
-[![Docs](https://github.com/connormanning/entwine/workflows/Docs/badge.svg)](https://github.com/connormanning/entwine/actions?query=workflow%3ADocs)
-[![Conda](https://github.com/connormanning/entwine/workflows/Conda/badge.svg)](https://github.com/connormanning/entwine/actions?query=workflow%3AConda)
-[![Docs](https://github.com/connormanning/entwine/workflows/Docs/badge.svg)](https://github.com/connormanning/entwine/actions?query=workflow%3ADocs)
-[![Docker](https://github.com/connormanning/entwine/workflows/Docker/badge.svg)](https://github.com/connormanning/entwine/actions?query=workflow%3ADocker)
+[![Build](https://github.com/ArkounM/entwine2tiles/actions/workflows/build.yml/badge.svg)](https://github.com/ArkounM/entwine2tiles/actions/workflows/build.yml)
+[![Conda](https://github.com/ArkounM/entwine2tiles/actions/workflows/conda.yml/badge.svg)](https://github.com/ArkounM/entwine2tiles/actions/workflows/conda.yml)
+[![Docker](https://github.com/ArkounM/entwine2tiles/actions/workflows/docker.yml/badge.svg)](https://github.com/ArkounM/entwine2tiles/actions/workflows/docker.yml)
+
+## Installing this fork
+
+The binary links PDAL, GDAL, PROJ, curl and OpenSSL, so there is no useful bare
+executable to download. Use the container, which carries all of it:
+
+```
+docker pull ghcr.io/arkounm/entwine2tiles:latest
+
+docker run --rm -v /data:/data ghcr.io/arkounm/entwine2tiles \
+    build -i /data/scan.las -o /data/ept
+
+docker run --rm -v /data:/data ghcr.io/arkounm/entwine2tiles \
+    convert -i /data/ept -o /data/tiles -t 16 -g 16.0 --rootErrorMultiplier 16.0
+```
+
+The image is built from this source tree rather than from the conda-forge
+`entwine` package, and it includes `libpdal-e57`, so E57 input works without a
+conversion step. Every commit on `main` publishes `sha-<short sha>` and moves
+`latest`; git tags publish under the tag name as well. Branches and pull requests
+are built and smoke tested but never published.
+
+To build from source instead, see [FORK.md](./FORK.md). The upstream instructions
+below still apply, with two differences: the executable is `entwine2tiles`, and
+`conda install entwine` gives you upstream, not this fork.
 
 Entwine is a data organization library for massive point clouds, designed to conquer datasets of hundreds of billions of points as well as desktop-scale point clouds.  Entwine can index anything that is [PDAL](https://pdal.io)-readable, and can read/write to a variety of sources like S3 or Dropbox.  Builds are completely lossless, so no points will be discarded even for terabyte-scale datasets.
 

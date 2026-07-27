@@ -1,0 +1,11 @@
+# The image builds from source now, so the context is the whole tree. Keep the
+# things that only make sense on a developer machine out of it.
+.git
+.github
+build/
+_build/
+doc/
+entwine-feedstock/
+packages/
+*.tar
+*.tar.gz
