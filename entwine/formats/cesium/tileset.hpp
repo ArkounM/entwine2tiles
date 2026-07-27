@@ -11,14 +11,12 @@
 
 // Restored in entwine2tiles from upstream commit 16f9709 (2019-12-16), the last
 // commit before the Cesium writer was removed, and ported to the 3.2.1 API.
-// The 2019 version walked ept-hierarchy JSON files itself and emitted one
-// external tileset per hierarchy subtree. Entwine now loads the whole hierarchy
-// into a flat map, so this writes a single tileset.json.
 
 #pragma once
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <entwine/builder/hierarchy.hpp>
@@ -49,6 +47,21 @@ enum class Format
     Pnts
 };
 
+struct FormatTraits
+{
+    const char* name;
+    const char* extension;
+    const char* assetVersion;
+};
+
+const FormatTraits& traits(Format format);
+
+ColorType toColorType(std::string s);
+std::string toString(ColorType c);
+
+Format toFormat(std::string s);
+inline std::string toString(Format f) { return traits(f).name; }
+
 // This class is the entrypoint of a 3D Tiles tileset definition:
 // https://github.com/CesiumGS/3d-tiles/tree/main/specification#tilesetjson
 class Tileset
@@ -62,36 +75,44 @@ public:
     const arbiter::Endpoint& out() const { return m_out; }
 
     const Metadata& metadata() const { return m_metadata; }
-    const Hierarchy& hierarchy() const { return m_hierarchy; }
     const Io& io() const { return *m_io; }
+
+    Format format() const { return m_format; }
+    std::string contentExtension() const { return traits(m_format).extension; }
 
     bool hasColor() const { return m_colorType != ColorType::None; }
     bool hasNormals() const { return m_hasNormals; }
-    bool truncate() const { return m_truncate; }
     ColorType colorType() const { return m_colorType; }
-    std::string colorString() const;
 
-    Format format() const { return m_format; }
-    std::string formatString() const;
-    std::string contentExtension() const;
+    // LAS stores colour in 16 bits, but whether a file uses the high byte
+    // varies by scanner, so the depth comes from the build's own statistics.
+    uint8_t toEightBit(uint16_t v) const
+    {
+        return m_truncate ? v >> 8 : static_cast<uint8_t>(std::min<uint16_t>(v, 255));
+    }
 
-    bool rawColor() const { return m_rawColor; }
+    // Source value to the linear 16 bit value glTF wants, or null if the
+    // output has no colour. Hoist out of per-point loops.
+    const uint16_t* linearLut() const
+    {
+        return m_linearLut.empty() ? nullptr : m_linearLut.data();
+    }
+    uint16_t toLinearFromByte(uint8_t v) const
+    {
+        return m_linearLut[m_truncate ? v * 257 : v];
+    }
 
-    // Maps a raw colour value from the source, which is 16 bit whether or not
-    // the file uses the high byte, to the 16 bit value written to the tile.
-    // Carries the 8 bit scaling and the sRGB to linear conversion, since
-    // neither is worth recomputing per point.
-    uint16_t toStoredColor(uint16_t v) const { return m_colorLut[v]; }
-
-    // Content is written relative to this point, and so are the bounding
-    // volumes, which keeps everything within float range of its own origin.
+    // Content and bounding volumes are written relative to this point, which
+    // keeps them within float range of their own origin.
     const Point& origin() const { return m_origin; }
 
-    double rootGeometricError() const { return m_rootGeometricError; }
-    double rootErrorMultiplier() const { return m_rootErrorMultiplier; }
+    double rootGeometricError() const
+    {
+        return m_rootGeometricError * m_rootErrorMultiplier;
+    }
     double geometricErrorAt(uint64_t depth) const
     {
-        return m_rootGeometricError / std::pow(2.0, depth);
+        return std::ldexp(m_rootGeometricError, -static_cast<int>(depth));
     }
 
     uint64_t tileCount() const { return m_tileCount; }
@@ -102,11 +123,6 @@ private:
     json build(const ChunkKey& ck) const;
     void write(const ChunkKey& ck, uint64_t np) const;
 
-    ColorType getColorType(const json& config) const;
-    bool getTruncate(const json& config) const;
-    std::vector<uint16_t> getColorLut() const;
-
-    std::shared_ptr<arbiter::Arbiter> m_arbiter;
     const Endpoints m_in;
     const arbiter::Endpoint m_out;
 
@@ -118,8 +134,7 @@ private:
     const Point m_origin;
     const ColorType m_colorType;
     const bool m_truncate;
-    const bool m_rawColor;
-    const std::vector<uint16_t> m_colorLut;
+    const std::vector<uint16_t> m_linearLut;
     const bool m_hasNormals;
     const double m_rootGeometricError;
     const double m_rootErrorMultiplier;

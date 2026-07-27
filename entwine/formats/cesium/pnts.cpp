@@ -12,7 +12,11 @@
 #include <entwine/formats/cesium/pnts.hpp>
 
 #include <algorithm>
+#include <cassert>
+#include <functional>
+#include <string>
 
+#include <entwine/formats/cesium/bytes.hpp>
 #include <entwine/io/io.hpp>
 #include <entwine/types/dimension.hpp>
 
@@ -31,95 +35,75 @@ Pnts::Pnts(const Tileset& tileset, const ChunkKey& ck, const uint64_t np)
     , m_key(ck)
     , m_capacity(np)
     , m_mid(m_key.bounds().mid())
-{ }
+{
+    m_xyz.reserve(m_capacity * 3);
+    if (m_tileset.hasColor()) m_rgb.reserve(m_capacity * 3);
+    if (m_tileset.hasNormals()) m_normals.reserve(m_capacity * 3);
+}
 
 std::vector<char> Pnts::build()
 {
     const Metadata& m(m_tileset.metadata());
 
-    // The absolute schema gives us real coordinates rather than the scaled
-    // integers that are stored on disk.
     auto layout(toLayout(m.absoluteSchema, m.dataType == io::Type::Laszip));
     VectorPointTable table(layout, m_capacity);
 
-    table.setProcess([this, &table]()
-    {
-        m_np += table.numPoints();
-        buildXyz(table);
-        buildRgb(table);
-        buildNormals(table);
-    });
+    table.setProcess([this, &table]() { read(table); });
 
-    m_tileset.io().read(
-            m_key.toString() + getPostfix(m_tileset.metadata()),
-            table);
+    m_tileset.io().read(m_key.toString() + getPostfix(m), table);
 
     return buildFile();
 }
 
-void Pnts::buildXyz(VectorPointTable& table)
+void Pnts::read(VectorPointTable& table)
 {
-    m_xyz.reserve(m_xyz.size() + table.numPoints() * 3);
+    m_np += table.numPoints();
+
+    const ColorType colorType(m_tileset.colorType());
+    const bool hasColor(m_tileset.hasColor());
+    const bool hasNormals(m_tileset.hasNormals());
+
+    uint8_t r(0), g(0), b(0);
+
+    if (colorType == ColorType::Tile)
+    {
+        uint64_t h(std::hash<std::string>()(m_key.toString()));
+        r = h & 0xff;
+        g = (h >> 8) & 0xff;
+        b = (h >> 16) & 0xff;
+    }
 
     for (const auto& pr : table)
     {
         m_xyz.push_back(pr.getFieldAs<double>(DimId::X) - m_mid.x);
         m_xyz.push_back(pr.getFieldAs<double>(DimId::Y) - m_mid.y);
         m_xyz.push_back(pr.getFieldAs<double>(DimId::Z) - m_mid.z);
-    }
-}
 
-void Pnts::buildRgb(VectorPointTable& table)
-{
-    if (!m_tileset.hasColor()) return;
-    m_rgb.reserve(m_rgb.size() + table.numPoints() * 3);
-
-    auto getByte([this](const pdal::PointRef& pr, DimId id) -> uint8_t
-    {
-        const uint16_t v(pr.getFieldAs<uint16_t>(id));
-        if (m_tileset.truncate()) return v >> 8;
-        return static_cast<uint8_t>(std::min<uint16_t>(v, 255));
-    });
-
-    uint8_t r(0), g(0), b(0);
-
-    if (m_tileset.colorType() == ColorType::Tile)
-    {
-        r = std::rand() % 256;
-        g = std::rand() % 256;
-        b = std::rand() % 256;
-    }
-
-    assert(m_tileset.colorType() != ColorType::None);
-    for (const auto& pr : table)
-    {
-        if (m_tileset.colorType() == ColorType::Rgb)
+        if (hasColor)
         {
-            r = getByte(pr, DimId::Red);
-            g = getByte(pr, DimId::Green);
-            b = getByte(pr, DimId::Blue);
-        }
-        else if (m_tileset.colorType() == ColorType::Intensity)
-        {
-            r = g = b = getByte(pr, DimId::Intensity);
+            if (colorType == ColorType::Rgb)
+            {
+                r = m_tileset.toEightBit(pr.getFieldAs<uint16_t>(DimId::Red));
+                g = m_tileset.toEightBit(pr.getFieldAs<uint16_t>(DimId::Green));
+                b = m_tileset.toEightBit(pr.getFieldAs<uint16_t>(DimId::Blue));
+            }
+            else if (colorType == ColorType::Intensity)
+            {
+                r = g = b = m_tileset.toEightBit(
+                        pr.getFieldAs<uint16_t>(DimId::Intensity));
+            }
+
+            m_rgb.push_back(r);
+            m_rgb.push_back(g);
+            m_rgb.push_back(b);
         }
 
-        m_rgb.push_back(r);
-        m_rgb.push_back(g);
-        m_rgb.push_back(b);
-    }
-}
-
-void Pnts::buildNormals(VectorPointTable& table)
-{
-    if (!m_tileset.hasNormals()) return;
-    m_normals.reserve(m_normals.size() + table.numPoints() * 3);
-
-    for (const auto& pr : table)
-    {
-        m_normals.push_back(pr.getFieldAs<float>(DimId::NormalX));
-        m_normals.push_back(pr.getFieldAs<float>(DimId::NormalY));
-        m_normals.push_back(pr.getFieldAs<float>(DimId::NormalZ));
+        if (hasNormals)
+        {
+            m_normals.push_back(pr.getFieldAs<float>(DimId::NormalX));
+            m_normals.push_back(pr.getFieldAs<float>(DimId::NormalY));
+            m_normals.push_back(pr.getFieldAs<float>(DimId::NormalZ));
+        }
     }
 }
 
@@ -149,50 +133,26 @@ std::vector<char> Pnts::buildFile() const
     while (featureString.size() % 8) featureString += ' ';
 
     const uint64_t headerSize(28);
-    const uint64_t binaryBytes =
-        m_xyz.size() * sizeof(float) +
-        m_rgb.size() +
-        m_normals.size() * sizeof(float);
-    const uint64_t totalBytes = headerSize + featureString.size() + binaryBytes;
-
-    std::vector<char> header;
-    header.reserve(headerSize);
-
-    auto push([&header](uint32_t v)
-    {
-        header.insert(
-                header.end(),
-                reinterpret_cast<char*>(&v),
-                reinterpret_cast<char*>(&v + 1));
-    });
-
-    const std::string magic("pnts");
-    header.insert(header.end(), magic.begin(), magic.end());
-    push(1);                    // Version.
-    push(totalBytes);           // ByteLength.
-    push(featureString.size()); // FeatureTableJsonByteLength.
-    push(binaryBytes);          // FeatureTableBinaryByteLength.
-    push(0);                    // BatchTableJsonByteLength.
-    push(0);                    // BatchTableBinaryByteLength.
-    assert(header.size() == headerSize);
+    const uint64_t binaryBytes(byteOffset);
+    const uint64_t totalBytes(headerSize + featureString.size() + binaryBytes);
 
     std::vector<char> pnts;
     pnts.reserve(totalBytes);
 
-    pnts.insert(pnts.end(), header.begin(), header.end());
+    const std::string magic("pnts");
+    pnts.insert(pnts.end(), magic.begin(), magic.end());
+    append(pnts, 1);                                    // Version.
+    append(pnts, static_cast<uint32_t>(totalBytes));
+    append(pnts, static_cast<uint32_t>(featureString.size()));
+    append(pnts, static_cast<uint32_t>(binaryBytes));
+    append(pnts, 0);                                    // BatchTableJson.
+    append(pnts, 0);                                    // BatchTableBinary.
+    assert(pnts.size() == headerSize);
+
     pnts.insert(pnts.end(), featureString.begin(), featureString.end());
-    pnts.insert(
-            pnts.end(),
-            reinterpret_cast<const char*>(m_xyz.data()),
-            reinterpret_cast<const char*>(m_xyz.data() + m_xyz.size()));
-    pnts.insert(
-            pnts.end(),
-            reinterpret_cast<const char*>(m_rgb.data()),
-            reinterpret_cast<const char*>(m_rgb.data() + m_rgb.size()));
-    pnts.insert(
-            pnts.end(),
-            reinterpret_cast<const char*>(m_normals.data()),
-            reinterpret_cast<const char*>(m_normals.data() + m_normals.size()));
+    append(pnts, m_xyz);
+    append(pnts, m_rgb);
+    append(pnts, m_normals);
 
     return pnts;
 }

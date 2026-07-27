@@ -10,6 +10,7 @@ set(
 
 set(
     HEADERS
+    "${BASE}/bytes.hpp"
     "${BASE}/tile.hpp"
     "${BASE}/tileset.hpp"
     "${BASE}/gltf.hpp"

@@ -11,8 +11,11 @@
 #include <entwine/formats/cesium/gltf.hpp>
 
 #include <algorithm>
-#include <limits>
+#include <functional>
+#include <stdexcept>
+#include <string>
 
+#include <entwine/formats/cesium/bytes.hpp>
 #include <entwine/io/io.hpp>
 #include <entwine/types/dimension.hpp>
 
@@ -26,14 +29,9 @@ namespace
 
 using DimId = pdal::Dimension::Id;
 
+constexpr uint32_t magic = 0x46546C67;      // "glTF"
 constexpr uint32_t chunkJson = 0x4E4F534A;
 constexpr uint32_t chunkBin = 0x004E4942;
-
-void push(std::vector<char>& v, const uint32_t n)
-{
-    const char* p(reinterpret_cast<const char*>(&n));
-    v.insert(v.end(), p, p + sizeof(n));
-}
 
 } // unnamed namespace
 
@@ -41,99 +39,80 @@ Gltf::Gltf(const Tileset& tileset, const ChunkKey& ck, const uint64_t np)
     : m_tileset(tileset)
     , m_key(ck)
     , m_capacity(np)
-    , m_origin(tileset.origin())
 {
-    for (int i(0); i < 3; ++i)
-    {
-        m_min[i] = std::numeric_limits<float>::max();
-        m_max[i] = std::numeric_limits<float>::lowest();
-    }
+    m_xyz.reserve(m_capacity * 3);
+    if (m_tileset.linearLut()) m_rgba.reserve(m_capacity * 4);
 }
 
 std::vector<char> Gltf::build()
 {
     const Metadata& m(m_tileset.metadata());
 
+    // The absolute schema gives real coordinates rather than the scaled
+    // integers stored on disk.
     auto layout(toLayout(m.absoluteSchema, m.dataType == io::Type::Laszip));
     VectorPointTable table(layout, m_capacity);
 
-    table.setProcess([this, &table]()
-    {
-        m_np += table.numPoints();
-        buildXyz(table);
-        buildRgba(table);
-    });
+    table.setProcess([this, &table]() { read(table); });
 
     m_tileset.io().read(m_key.toString() + getPostfix(m), table);
 
-    if (!m_np)
-    {
-        for (int i(0); i < 3; ++i) m_min[i] = m_max[i] = 0;
-    }
+    if (!m_np) for (int i(0); i < 3; ++i) m_min[i] = m_max[i] = 0;
 
     return buildFile();
 }
 
 // glTF is y-up and 3D Tiles is z-up, and the renderer applies that conversion
-// to the content on the way in. Writing (x, z, -y) here means the points land
+// to the content on the way in, so writing (x, z, -y) here lands the points
 // back on (x, y, z) in tile space.
-void Gltf::buildXyz(VectorPointTable& table)
+void Gltf::read(VectorPointTable& table)
 {
-    m_xyz.reserve(m_xyz.size() + table.numPoints() * 3);
+    m_np += table.numPoints();
+
+    const Point origin(m_tileset.origin());
+    const ColorType colorType(m_tileset.colorType());
+    const uint16_t* const lut(m_tileset.linearLut());
+
+    float mn[3] { m_min[0], m_min[1], m_min[2] };
+    float mx[3] { m_max[0], m_max[1], m_max[2] };
+
+    uint16_t r(0), g(0), b(0);
+
+    if (colorType == ColorType::Tile)
+    {
+        // Seeded from the key so the colours are reproducible run to run.
+        uint64_t h(std::hash<std::string>()(m_key.toString()));
+        r = m_tileset.toLinearFromByte(h & 0xff);
+        g = m_tileset.toLinearFromByte((h >> 8) & 0xff);
+        b = m_tileset.toLinearFromByte((h >> 16) & 0xff);
+    }
 
     for (const auto& pr : table)
     {
         const float v[3] {
-            static_cast<float>(pr.getFieldAs<double>(DimId::X) - m_origin.x),
-            static_cast<float>(pr.getFieldAs<double>(DimId::Z) - m_origin.z),
-            static_cast<float>(m_origin.y - pr.getFieldAs<double>(DimId::Y))
+            static_cast<float>(pr.getFieldAs<double>(DimId::X) - origin.x),
+            static_cast<float>(pr.getFieldAs<double>(DimId::Z) - origin.z),
+            static_cast<float>(origin.y - pr.getFieldAs<double>(DimId::Y))
         };
 
         for (int i(0); i < 3; ++i)
         {
             m_xyz.push_back(v[i]);
-            m_min[i] = std::min(m_min[i], v[i]);
-            m_max[i] = std::max(m_max[i], v[i]);
+            mn[i] = std::min(mn[i], v[i]);
+            mx[i] = std::max(mx[i], v[i]);
         }
-    }
-}
 
-void Gltf::buildRgba(VectorPointTable& table)
-{
-    if (!m_tileset.hasColor()) return;
-    m_rgba.reserve(m_rgba.size() + table.numPoints() * 4);
+        if (!lut) continue;
 
-    // Read as 16 bit rather than asking PDAL for a uint8, which throws on
-    // anything above 255 rather than clamping. The tileset's table handles the
-    // scaling and the colour space in one lookup.
-    auto get([this](const pdal::PointRef& pr, DimId id) -> uint16_t
-    {
-        return m_tileset.toStoredColor(pr.getFieldAs<uint16_t>(id));
-    });
-
-    uint16_t r(0), g(0), b(0);
-
-    if (m_tileset.colorType() == ColorType::Tile)
-    {
-        // Scale the random byte to whatever depth the table expects, so tile
-        // colouring looks the same on an 8 bit file and a 16 bit one.
-        const uint16_t spread(m_tileset.truncate() ? 257 : 1);
-        r = m_tileset.toStoredColor((std::rand() % 256) * spread);
-        g = m_tileset.toStoredColor((std::rand() % 256) * spread);
-        b = m_tileset.toStoredColor((std::rand() % 256) * spread);
-    }
-
-    for (const auto& pr : table)
-    {
-        if (m_tileset.colorType() == ColorType::Rgb)
+        if (colorType == ColorType::Rgb)
         {
-            r = get(pr, DimId::Red);
-            g = get(pr, DimId::Green);
-            b = get(pr, DimId::Blue);
+            r = lut[pr.getFieldAs<uint16_t>(DimId::Red)];
+            g = lut[pr.getFieldAs<uint16_t>(DimId::Green)];
+            b = lut[pr.getFieldAs<uint16_t>(DimId::Blue)];
         }
-        else if (m_tileset.colorType() == ColorType::Intensity)
+        else if (colorType == ColorType::Intensity)
         {
-            r = g = b = get(pr, DimId::Intensity);
+            r = g = b = lut[pr.getFieldAs<uint16_t>(DimId::Intensity)];
         }
 
         m_rgba.push_back(r);
@@ -141,11 +120,13 @@ void Gltf::buildRgba(VectorPointTable& table)
         m_rgba.push_back(b);
         m_rgba.push_back(65535);
     }
+
+    for (int i(0); i < 3; ++i) { m_min[i] = mn[i]; m_max[i] = mx[i]; }
 }
 
 std::vector<char> Gltf::buildFile() const
 {
-    const bool hasColor(m_rgba.size());
+    const bool hasColor(!m_rgba.empty());
 
     const uint64_t xyzBytes(m_xyz.size() * sizeof(float));
     const uint64_t rgbaBytes(m_rgba.size() * sizeof(uint16_t));
@@ -179,8 +160,8 @@ std::vector<char> Gltf::buildFile() const
             { "target", 34962 }
         }));
 
-        // glTF requires each vertex attribute element to start on a 4-byte
-        // boundary, which is why colours are VEC4 rather than VEC3.
+        // VEC4 rather than VEC3 because glTF requires each vertex attribute
+        // element to start on a 4-byte boundary.
         accessors.push_back(json::object({
             { "bufferView", 1 },
             { "componentType", 5123 },
@@ -197,33 +178,25 @@ std::vector<char> Gltf::buildFile() const
 
     const std::string name(m_key.toString());
 
-    json primitive(json::object({
-        { "attributes", attributes },
-        { "mode", 0 }
-    }));
-
-    json mesh(json::object({ { "name", name } }));
-    mesh["primitives"] = json::array({ primitive });
-
-    json node(json::object({ { "mesh", 0 }, { "name", name } }));
-
-    json scene(json::object());
-    scene["nodes"] = json::array({ 0 });
-
     json j(json::object());
-    j["asset"] = json::object({
-        { "version", "2.0" },
-        { "generator", "entwine2tiles" }
-    });
+    j["asset"] = { { "version", "2.0" }, { "generator", "entwine2tiles" } };
     j["scene"] = 0;
-    j["scenes"] = json::array({ scene });
-    j["nodes"] = json::array({ node });
-    j["meshes"] = json::array({ mesh });
-    j["accessors"] = accessors;
-    j["bufferViews"] = bufferViews;
-    j["buffers"] = json::array({
-        json::object({ { "byteLength", binBytes + binPadding } })
+    j["scenes"] = json::array({ json { { "nodes", json::array({ 0 }) } } });
+    j["nodes"] = json::array({ json { { "mesh", 0 }, { "name", name } } });
+    j["meshes"] = json::array({
+        json {
+            { "name", name },
+            {
+                "primitives",
+                json::array({
+                    json { { "attributes", std::move(attributes) }, { "mode", 0 } }
+                })
+            }
+        }
     });
+    j["accessors"] = std::move(accessors);
+    j["bufferViews"] = std::move(bufferViews);
+    j["buffers"] = json::array({ json { { "byteLength", binBytes + binPadding } } });
 
     std::string jsonString(j.dump());
     while (jsonString.size() % 4) jsonString += ' ';
@@ -235,27 +208,26 @@ std::vector<char> Gltf::buildFile() const
         chunkHeaderBytes + jsonString.size() +
         chunkHeaderBytes + binBytes + binPadding;
 
+    if (totalBytes > std::numeric_limits<uint32_t>::max())
+    {
+        throw std::runtime_error("Tile " + name + " exceeds the GLB size limit");
+    }
+
     std::vector<char> glb;
     glb.reserve(totalBytes);
 
-    push(glb, 0x46546C67);  // "glTF"
-    push(glb, 2);           // Version.
-    push(glb, static_cast<uint32_t>(totalBytes));
+    append(glb, magic);
+    append(glb, 2);                                             // Version.
+    append(glb, static_cast<uint32_t>(totalBytes));
 
-    push(glb, static_cast<uint32_t>(jsonString.size()));
-    push(glb, chunkJson);
+    append(glb, static_cast<uint32_t>(jsonString.size()));
+    append(glb, chunkJson);
     glb.insert(glb.end(), jsonString.begin(), jsonString.end());
 
-    push(glb, static_cast<uint32_t>(binBytes + binPadding));
-    push(glb, chunkBin);
-    glb.insert(
-            glb.end(),
-            reinterpret_cast<const char*>(m_xyz.data()),
-            reinterpret_cast<const char*>(m_xyz.data() + m_xyz.size()));
-    glb.insert(
-            glb.end(),
-            reinterpret_cast<const char*>(m_rgba.data()),
-            reinterpret_cast<const char*>(m_rgba.data() + m_rgba.size()));
+    append(glb, static_cast<uint32_t>(binBytes + binPadding));
+    append(glb, chunkBin);
+    append(glb, m_xyz);
+    append(glb, m_rgba);
     glb.insert(glb.end(), binPadding, 0);
 
     return glb;

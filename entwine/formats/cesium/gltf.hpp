@@ -8,15 +8,14 @@
 *
 ******************************************************************************/
 
-// Written for entwine2tiles. This is the glTF counterpart to pnts.hpp: same
-// job, same inputs, current format. 3D Tiles 1.1 deprecates pnts in favour of
-// glTF content, and Cesium for Unreal renders glTF POINTS, so a new build has
-// no reason to emit pnts.
+// The glTF counterpart to pnts.hpp: same job, current format. 3D Tiles 1.1
+// deprecates pnts in favour of glTF, and Cesium for Unreal renders glTF POINTS.
 
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include <entwine/formats/cesium/tileset.hpp>
@@ -31,36 +30,35 @@ namespace cesium
 // A single binary glTF file holding one POINTS primitive.
 class Gltf
 {
-    using Xyz = std::vector<float>;
-
-    // 16 bit, because these are linear values: 8 bits of linear would band
-    // badly in the dark half, where most of a scan lives.
-    using Rgba = std::vector<uint16_t>;
-
 public:
     Gltf(const Tileset& tileset, const ChunkKey& ck, uint64_t np);
     std::vector<char> build();
 
 private:
-    void buildXyz(VectorPointTable& table);
-    void buildRgba(VectorPointTable& table);
-
+    void read(VectorPointTable& table);
     std::vector<char> buildFile() const;
 
     const Tileset& m_tileset;
     const ChunkKey m_key;
     const uint64_t m_capacity;
 
-    // Positions are stored relative to the tileset origin so that they fit in
-    // 32-bit floats without losing precision. Absolute coordinates in a scan
-    // this size quantize to a quarter of a metre once they are floats.
-    const Point m_origin;
+    // Relative to the tileset origin, which is what keeps them precise.
+    std::vector<float> m_xyz;
 
-    Xyz m_xyz;
-    Rgba m_rgba;
+    // 16 bit: these are linear values, and 8 bits of linear bands in the dark
+    // half, where most of a scan lives.
+    std::vector<uint16_t> m_rgba;
 
-    float m_min[3] { 0, 0, 0 };
-    float m_max[3] { 0, 0, 0 };
+    float m_min[3] {
+        std::numeric_limits<float>::max(),
+        std::numeric_limits<float>::max(),
+        std::numeric_limits<float>::max()
+    };
+    float m_max[3] {
+        std::numeric_limits<float>::lowest(),
+        std::numeric_limits<float>::lowest(),
+        std::numeric_limits<float>::lowest()
+    };
 
     std::size_t m_np = 0;
 };

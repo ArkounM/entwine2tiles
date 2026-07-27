@@ -12,6 +12,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include <entwine/formats/cesium/tileset.hpp>
@@ -23,33 +24,26 @@ namespace entwine
 namespace cesium
 {
 
-// This class represents a single PNTS file:
+// A single PNTS file, the legacy point cloud format deprecated by 3D Tiles 1.1:
 // https://github.com/CesiumGS/3d-tiles/tree/main/specification/TileFormats/PointCloud
 class Pnts
 {
-    using Xyz = std::vector<float>;
-    using Rgb = std::vector<uint8_t>;
-    using Normals = std::vector<float>;
-
 public:
     Pnts(const Tileset& tileset, const ChunkKey& ck, uint64_t np);
     std::vector<char> build();
 
 private:
-    void buildXyz(VectorPointTable& table);
-    void buildRgb(VectorPointTable& table);
-    void buildNormals(VectorPointTable& table);
-
+    void read(VectorPointTable& table);
     std::vector<char> buildFile() const;
 
     const Tileset& m_tileset;
     const ChunkKey m_key;
     const uint64_t m_capacity;
-    Point m_mid;
+    const Point m_mid;
 
-    Xyz m_xyz;
-    Rgb m_rgb;
-    Normals m_normals;
+    std::vector<float> m_xyz;
+    std::vector<uint8_t> m_rgb;
+    std::vector<float> m_normals;
 
     std::size_t m_np = 0;
 };

@@ -18,47 +18,36 @@ namespace entwine
 namespace cesium
 {
 
-// This class represents the metadata for a single tile:
+// Bounding volumes are relative to the tileset origin, matching the content.
 // https://github.com/CesiumGS/3d-tiles/tree/main/specification#tile-metadata
-class Tile
+inline json toBox(const Bounds& bounds, const Point& origin)
 {
-public:
-    Tile(const Tileset& tileset, const ChunkKey& ck)
-        : m_tileset(tileset)
-        , m_json(json::object())
-    {
-        m_json["boundingVolume"] = json::object({
-            { "box", toBox(ck.bounds()) }
-        });
-        m_json["geometricError"] = m_tileset.geometricErrorAt(ck.depth());
-        m_json["content"] = json::object({
-            { "uri", ck.toString() + m_tileset.contentExtension() }
-        });
+    const Point& mid(bounds.mid());
 
-        if (!ck.depth()) m_json["refine"] = "ADD";
-    }
+    return json::array({
+        mid.x - origin.x,     mid.y - origin.y,     mid.z - origin.z,
+        bounds.width() / 2.0, 0,                    0,
+        0,                    bounds.depth() / 2.0, 0,
+        0,                    0,                    bounds.height() / 2.0
+    });
+}
 
-    json get() const { return m_json; }
+inline json toTile(const Tileset& tileset, const ChunkKey& ck)
+{
+    json j(json::object());
 
-private:
-    // Relative to the tileset origin, matching the content.
-    json toBox(Bounds in) const
-    {
-        const Point& o(m_tileset.origin());
+    j["boundingVolume"] = json::object({
+        { "box", toBox(ck.bounds(), tileset.origin()) }
+    });
+    j["geometricError"] = tileset.geometricErrorAt(ck.depth());
+    j["content"] = json::object({
+        { "uri", ck.toString() + tileset.contentExtension() }
+    });
 
-        return json::array({
-            in.mid().x - o.x,     in.mid().y - o.y,     in.mid().z - o.z,
-            in.width() / 2.0,     0,                    0,
-            0,                    in.depth() / 2.0,     0,
-            0,                    0,                    in.height() / 2.0
-        });
-    }
+    if (!ck.depth()) j["refine"] = "ADD";
 
-    const Tileset& m_tileset;
-    json m_json;
-};
-
-inline void to_json(json& j, const Tile& t) { j = t.get(); }
+    return j;
+}
 
 } // namespace cesium
 } // namespace entwine
