@@ -93,6 +93,7 @@ private:
     void write(const ChunkKey& ck, uint64_t np) const;
 
     ColorType getColorType(const json& config) const;
+    bool getTruncate(const json& config) const;
 
     std::shared_ptr<arbiter::Arbiter> m_arbiter;
     const Endpoints m_in;

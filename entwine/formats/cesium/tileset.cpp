@@ -61,7 +61,7 @@ Tileset::Tileset(const json& config)
     , m_format(getFormat(config))
     , m_origin(m_metadata.bounds.mid())
     , m_colorType(getColorType(config))
-    , m_truncate(config.value("truncate", false))
+    , m_truncate(getTruncate(config))
     , m_hasNormals(
             contains(m_metadata.schema, "NormalX") &&
             contains(m_metadata.schema, "NormalY") &&
@@ -132,6 +132,29 @@ ColorType Tileset::getColorType(const json& config) const
     }
 
     return ColorType::None;
+}
+
+bool Tileset::getTruncate(const json& config) const
+{
+    if (config.count("truncate")) return config.at("truncate").get<bool>();
+
+    // 3D Tiles colors are 8 bit and LAS stores them in 16, but whether a file
+    // uses the high byte varies by scanner, so ask the data rather than making
+    // the caller know. Entwine records per-dimension stats during the build.
+    if (m_colorType == ColorType::None || m_colorType == ColorType::Tile)
+    {
+        return false;
+    }
+
+    const std::string name(
+            m_colorType == ColorType::Intensity ? "Intensity" : "Red");
+
+    if (const Dimension* d = maybeFind(m_metadata.schema, name))
+    {
+        if (d->stats) return d->stats->maximum > 255.0;
+    }
+
+    return false;
 }
 
 void Tileset::build() const

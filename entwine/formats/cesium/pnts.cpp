@@ -11,6 +11,8 @@
 
 #include <entwine/formats/cesium/pnts.hpp>
 
+#include <algorithm>
+
 #include <entwine/io/io.hpp>
 #include <entwine/types/dimension.hpp>
 
@@ -74,8 +76,9 @@ void Pnts::buildRgb(VectorPointTable& table)
 
     auto getByte([this](const pdal::PointRef& pr, DimId id) -> uint8_t
     {
-        if (!m_tileset.truncate()) return pr.getFieldAs<uint8_t>(id);
-        else return pr.getFieldAs<uint16_t>(id) >> 8;
+        const uint16_t v(pr.getFieldAs<uint16_t>(id));
+        if (m_tileset.truncate()) return v >> 8;
+        return static_cast<uint8_t>(std::min<uint16_t>(v, 255));
     });
 
     uint8_t r(0), g(0), b(0);
