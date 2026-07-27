@@ -1,4 +1,11 @@
-ARG BASE_IMAGE="ubuntu:22.04"
+# The runtime base must be at least as new as the builder's glibc. A conda
+# environment ships everything except libc, and this image compiles from source
+# rather than installing a conda-forge package built against an old sysroot, so
+# the binary carries whatever glibc symbol versions the builder's toolchain used.
+# On ubuntu:22.04, which upstream used, that fails at once with
+# "version `GLIBC_2.38' not found". 24.04 carries 2.39. If the builder image ever
+# moves past that, the smoke test in the Docker workflow catches it.
+ARG BASE_IMAGE="ubuntu:24.04"
 FROM --platform=$TARGETPLATFORM condaforge/miniforge3:latest as build
 
 ARG TARGETPLATFORM
