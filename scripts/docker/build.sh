@@ -1,34 +1,18 @@
 #!/bin/bash
 
-CONTAINER_NAME="connormanning/entwine"
-VERSION="3.1.1"
+# Build the image locally the way .github/workflows/docker.yml does, and run the
+# same smoke test. Never pushes: publishing happens from CI, on main and tags.
 
-WIPE_CACHE="$1"
-if [ -z "$WIPE_CACHE" ]; then
-    echo "Not wiping cache";
-else
-    WIPE_CACHE="--no-cache"
-    echo "Wiping cache '$WIPE_CACHE'";
+set -e
 
-fi
+IMAGE=${IMAGE:-ghcr.io/arkounm/entwine2tiles}
+VERSION=${1:-local}
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 
-docker buildx build \
-    -t "$CONTAINER_NAME:$VERSION-amd64" . \
-    --platform linux/amd64  \
-    -f Dockerfile --load $WIPE_CACHE
+docker build -t "$IMAGE:$VERSION" -f "$ROOT/scripts/docker/Dockerfile" "$ROOT"
 
-docker buildx build -t "$CONTAINER_NAME:$VERSION-arm64" . \
-    -f Dockerfile --platform linux/arm64 \
-     --load $WIPE_CACHE
+for args in "help" "build --help" "convert --help"; do
+    docker run --rm "$IMAGE:$VERSION" $args > /dev/null
+done
 
-
-docker push $CONTAINER_NAME:$VERSION-arm64
-docker push $CONTAINER_NAME:$VERSION-amd64
-
-docker manifest create "$CONTAINER_NAME:$VERSION" \
-    --amend "$CONTAINER_NAME:$VERSION-arm64" \
-    --amend "$CONTAINER_NAME:$VERSION-amd64"
-
-docker manifest inspect $CONTAINER_NAME:$VERSION
-
-docker manifest push "$CONTAINER_NAME:$VERSION"
+echo "built and smoke tested $IMAGE:$VERSION"

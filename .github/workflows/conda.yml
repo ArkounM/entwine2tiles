@@ -19,7 +19,8 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     strategy:
-      fail-fast: true
+      # One platform failing should not hide the other two.
+      fail-fast: false
       matrix:
         platform: ['ubuntu-latest','windows-latest','macos-latest']
     env:

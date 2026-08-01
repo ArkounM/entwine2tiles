@@ -1,0 +1,14 @@
+# Only the source tree is needed. Everything else just invalidates the COPY
+# layer and forces a full rebuild on a docs commit.
+.git
+.github
+build/
+_build/
+doc/
+test/
+entwine-feedstock/
+packages/
+*.md
+*.tar
+*.tar.gz
+.readthedocs.yaml
