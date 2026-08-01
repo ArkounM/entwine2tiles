@@ -41,6 +41,7 @@ ChunkCache::ChunkCache(
     , m_io(io)
     , m_hierarchy(hierarchy)
     , m_pool(threads)
+    , m_cacheSize(metadata.internal.cacheSize)
 { }
 
 ChunkCache::~ChunkCache()

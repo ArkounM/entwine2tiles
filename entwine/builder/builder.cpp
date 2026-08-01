@@ -91,7 +91,7 @@ uint64_t Builder::run(
 
     pool.join();
 
-    if (fatalError.size()) throw new std::runtime_error(fatalError);
+    if (fatalError.size()) throw std::runtime_error(fatalError);
 
     return counter;
 }
@@ -268,7 +268,6 @@ void Builder::insert(
         : optional<Bounds>();
 
     uint64_t insertedSinceLastSleep(0);
-    uint64_t pointId(0);
 
     // We have our metadata point count - but now we'll count the points that
     // are actually inserted.  If the file's header metadata was inaccurate, or
@@ -283,7 +282,7 @@ void Builder::insert(
     table.setProcess([&]()
     {
         insertedSinceLastSleep += table.numPoints();
-        if (insertedSinceLastSleep > heuristics::sleepCount)
+        if (insertedSinceLastSleep > metadata.internal.sleepCount)
         {
             insertedSinceLastSleep = 0;
             clipper.clip();
@@ -298,8 +297,6 @@ void Builder::insert(
         {
             auto& pr = it.pointRef();
             pr.setField(DimId::OriginId, originId);
-            pr.setField(DimId::PointId, pointId);
-            ++pointId;
 
             voxel.initShallow(it.pointRef(), it.data());
             if (so) voxel.clip(*so);

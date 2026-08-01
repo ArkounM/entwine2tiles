@@ -61,6 +61,8 @@ struct Analysis
             maxNodesPerFile = std::max(maxNodesPerFile, chunkSize);
         }
 
+        if (totalFiles < 2) return;
+
         double mean = totalNodes / totalFiles;
         double ss = 0;
         for (const auto& chunk : chunks)
@@ -68,7 +70,7 @@ struct Analysis
             const double n = chunk.second.size();
             ss += std::pow(n - mean, 2.0);
         }
-        double stddev = std::sqrt(ss / (totalNodes - 1.0));
+        double stddev = std::sqrt(ss / (totalFiles - 1.0));
         rsd = stddev / mean;
     }
 

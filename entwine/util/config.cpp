@@ -221,7 +221,7 @@ json getPipeline(const json& j)
     return pipeline;
 }
 
-unsigned getThreads(const json& j) { return j.value("threads", 8); }
+unsigned getThreads(const json& j) { return getTotal(getCompoundThreads(j)); }
 Threads getCompoundThreads(const json& j)
 {
     return Threads(j.value("threads", json()));

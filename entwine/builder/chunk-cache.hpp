@@ -114,7 +114,7 @@ private:
     const Io& m_io;
     Hierarchy& m_hierarchy;
     Pool m_pool;
-    const uint64_t m_cacheSize = 64;
+    const uint64_t m_cacheSize;
 
     std::array<SpinLock, maxDepth> m_spins;
     std::array<std::map<Xyz, ReffedChunk>, maxDepth> m_slices;
