@@ -17,7 +17,22 @@
 ## Installing this fork
 
 The binary links PDAL, GDAL, PROJ, curl and OpenSSL, so there is no useful bare
-executable to download. Use the container, which carries all of it:
+executable to download. Two deliveries carry all of it.
+
+Conda, which puts `entwine2tiles` on your `PATH`:
+
+```
+conda create --yes --name entwine2tiles \
+    --channel amerchant --channel conda-forge entwine2tiles
+conda activate entwine2tiles
+entwine2tiles help
+```
+
+`--channel conda-forge` is required, not optional: the package depends on
+`libpdal-core` and `libpdal-e57`, which live there. Without it the solve fails
+with "nothing provides libpdal-core".
+
+Or the container, if you would rather install nothing:
 
 ```
 docker pull ghcr.io/arkounm/entwine2tiles:latest
@@ -30,10 +45,15 @@ docker run --rm -v /data:/data ghcr.io/arkounm/entwine2tiles \
 ```
 
 The image is built from this source tree rather than from the conda-forge
-`entwine` package, and it includes `libpdal-e57`, so E57 input works without a
-conversion step. Every commit on `main` publishes `sha-<short sha>` and moves
-`latest`; git tags publish under the tag name as well. Branches and pull requests
-are built and smoke tested but never published.
+`entwine` package, and both deliveries include `libpdal-e57`, so E57 input works
+without a conversion step. Every commit on `main` publishes `sha-<short sha>` and
+moves `latest`; git tags publish under the tag name as well, and also publish the
+conda package. Branches and pull requests are built and smoke tested but never
+published.
+
+Releases are versioned for the fork, starting at `v1.0.0`. The tags numbered
+`1.0.0` through `3.2.1` came with the preserved upstream history and are
+Entwine's own.
 
 To build from source instead, see [FORK.md](./FORK.md). The upstream instructions
 below still apply, with two differences: the executable is `entwine2tiles`, and
