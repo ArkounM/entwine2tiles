@@ -54,3 +54,24 @@ jobs:
       with:
         name: ${{ matrix.platform }}-conda-package
         path: ./entwine-feedstock/packages/
+
+    # Tags only, and never on a pull request, so the token stays out of runs
+    # that anyone can open. Each platform uploads its own architecture. The
+    # channel is whichever account the token belongs to, so there is no
+    # username here to get wrong.
+    - name: Publish to anaconda.org
+      if: startsWith(github.ref, 'refs/tags/') && github.repository_owner == 'ArkounM'
+      shell: bash -el {0}
+      working-directory: ./entwine-feedstock
+      env:
+        ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_API_TOKEN }}
+      run: |
+        if [ -z "$ANACONDA_API_TOKEN" ]; then
+            echo "ERROR: ANACONDA_API_TOKEN is not set on this repository." >&2
+            exit 1
+        fi
+        conda install -y -c conda-forge anaconda-client
+        # --skip-existing so re-running a tag does not fail on what is already up.
+        anaconda -t "$ANACONDA_API_TOKEN" upload \
+            --label main --skip-existing \
+            packages/*/*.conda
